@@ -1,6 +1,7 @@
 import csv
-from email.policy import default
 from prefect import task, Flow, Parameter
+from prefect.schedules import IntervalSchedule
+import datetime
 
 
 @task
@@ -25,8 +26,8 @@ def load(data, path):
         csv_writer.writerow(data)
 
 
-def build_flow():
-    with Flow("my_etl") as flow:
+def build_flow(schedule):
+    with Flow("my_etl", schedule=schedule) as flow:
         path = Parameter(name="path", required=True)
         data = extract(path)
         tdata = transform(data)
@@ -35,6 +36,12 @@ def build_flow():
     return flow
 
 
-flow = build_flow()
+schedule = IntervalSchedule(
+    start_date=datetime.datetime.now() + datetime.timedelta(seconds=1),
+    interval=datetime.timedelta(seconds=5),
+)
+
+
+flow = build_flow(schedule)
 
 flow.run(parameters={"path": "values.csv"})
