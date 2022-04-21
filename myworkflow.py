@@ -1,5 +1,6 @@
 import csv
-from prefect import task, Flow
+from email.policy import default
+from prefect import task, Flow, Parameter
 
 
 @task
@@ -24,10 +25,16 @@ def load(data, path):
         csv_writer.writerow(data)
 
 
-with Flow("my_etl") as flow:
-    data = extract("values.csv")
-    tdata = transform(data)
-    result = load(tdata, "tvalues.csv")
-    data2 = extract("values.csv", upstream_tasks=[result])
+def build_flow():
+    with Flow("my_etl") as flow:
+        path = Parameter(name="path", required=True)
+        data = extract(path)
+        tdata = transform(data)
+        result = load(tdata, path)
 
-flow.run()
+    return flow
+
+
+flow = build_flow()
+
+flow.run(parameters={"path": "values.csv"})
