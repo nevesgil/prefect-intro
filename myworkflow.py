@@ -9,7 +9,7 @@ def extract(path):
     data = [int(i) for i in text.split(",")]
     print(data)
     return data
-%
+
 
 @task
 def transform(data):
