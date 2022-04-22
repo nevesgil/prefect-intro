@@ -4,7 +4,7 @@ from prefect.schedules import IntervalSchedule
 import datetime
 
 
-@task
+@task(max_retries=2, retry_delay=datetime.timedelta(seconds=2))
 def extract(path):
     with open(path, "r") as f:
         text = f.readline().strip()
@@ -32,13 +32,13 @@ def build_flow(schedule):
         data = extract(path)
         tdata = transform(data)
         result = load(tdata, path)
-
     return flow
 
 
 schedule = IntervalSchedule(
     start_date=datetime.datetime.now() + datetime.timedelta(seconds=1),
-    interval=datetime.timedelta(seconds=5),
+    end_date=datetime.timedelta(seconds=10)
+    # interval=datetime.timedelta(seconds=5),
 )
 
 
