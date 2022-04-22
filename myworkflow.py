@@ -37,8 +37,8 @@ def build_flow(schedule):
 
 schedule = IntervalSchedule(
     start_date=datetime.datetime.now() + datetime.timedelta(seconds=1),
-    end_date=datetime.timedelta(seconds=10)
-    # interval=datetime.timedelta(seconds=5),
+    interval=datetime.timedelta(seconds=1),
+    end_date=datetime.datetime.now() + datetime.timedelta(seconds=11),
 )
 
 
