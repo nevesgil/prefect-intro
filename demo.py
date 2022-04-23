@@ -3,9 +3,11 @@ import json
 from collections import namedtuple
 from contextlib import closing
 import sqlite3
+import datetime
 
 from prefect import task, Flow
 from prefect.tasks.database.sqlite import SQLiteScript
+from prefect.schedules import IntervalSchedule
 
 
 ## setup
@@ -16,14 +18,14 @@ create_table = SQLiteScript(
 
 
 ## extract
-@task
+@task(cache_for=datetime.timedelta(days=1))
 def get_complaint_data():
     r = requests.get(
         "https://www.consumerfinance.gov/data-research/consumer-complaints/search/api/v1/",
         params={"size": 10},
     )
     response_json = json.loads(r.text)
-    """for now, let us use only part of the data"""
+    print("First time. Not cached.")
     return response_json["hits"]["hits"]
 
 
@@ -60,8 +62,11 @@ def store_complaints(parsed):
             conn.commit()
 
 
-def build_flow():
-    with Flow("ETL json flow") as f:
+schedule = IntervalSchedule(interval=datetime.timedelta(minutes=1))
+
+
+def build_flow(schedule):
+    with Flow("ETL json flow", schedule) as f:
         db_table = create_table()
         raw = get_complaint_data()
         parsed = parse_complaint_data(raw)
@@ -71,6 +76,6 @@ def build_flow():
     return f
 
 
-flow = build_flow()
+flow = build_flow(schedule)
 
 flow.run()
