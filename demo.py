@@ -5,6 +5,14 @@ from contextlib import closing
 import sqlite3
 
 from prefect import task, Flow
+from prefect.tasks.database.sqlite import SQLiteScript
+
+
+## setup
+create_table = SQLiteScript(
+    db="cfpbcomplaints.db",
+    script="CREATE TABLE IF NOT EXISTS complaint (timestamp TEXT, state TEXT, product TEXT, company TEXT, complaint_what_happened TEXT)",
+)
 
 
 ## extract
@@ -43,21 +51,22 @@ def parse_complaint_data(raw):
 ## load
 @task
 def store_complaints(parsed):
-    create_script = "CREATE TABLE IF NOT EXISTS complaint (timestamp TEXT, state TEXT, product TEXT, company TEXT, complaint_what_happened TEXT)"
+
     insert_cmd = "INSERT INTO complaint VALUES (?, ?, ?, ?, ?)"
 
     with closing(sqlite3.connect("cfpbcomplaints.db")) as conn:
         with closing(conn.cursor()) as cursor:
-            cursor.executescript(create_script)
             cursor.executemany(insert_cmd, parsed)
             conn.commit()
 
 
 def build_flow():
     with Flow("ETL json flow") as f:
+        db_table = create_table()
         raw = get_complaint_data()
         parsed = parse_complaint_data(raw)
-        store_complaints(parsed)
+        populated_table = store_complaints(parsed)
+        populated_table.set_upstream(db_table)
 
     return f
 
