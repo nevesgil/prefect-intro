@@ -3,19 +3,29 @@ import json
 from collections import namedtuple
 from contextlib import closing
 import sqlite3
+import datetime
 
 from prefect import task, Flow
+from prefect.tasks.database.sqlite import SQLiteScript
+from prefect.schedules import IntervalSchedule
+
+
+## setup
+create_table = SQLiteScript(
+    db="cfpbcomplaints.db",
+    script="CREATE TABLE IF NOT EXISTS complaint (timestamp TEXT, state TEXT, product TEXT, company TEXT, complaint_what_happened TEXT)",
+)
 
 
 ## extract
-@task
+@task(cache_for=datetime.timedelta(days=1))
 def get_complaint_data():
     r = requests.get(
         "https://www.consumerfinance.gov/data-research/consumer-complaints/search/api/v1/",
         params={"size": 10},
     )
     response_json = json.loads(r.text)
-    """for now, let us use only part of the data"""
+    print("First time. Not cached.")
     return response_json["hits"]["hits"]
 
 
@@ -43,25 +53,29 @@ def parse_complaint_data(raw):
 ## load
 @task
 def store_complaints(parsed):
-    create_script = "CREATE TABLE IF NOT EXISTS complaint (timestamp TEXT, state TEXT, product TEXT, company TEXT, complaint_what_happened TEXT)"
+
     insert_cmd = "INSERT INTO complaint VALUES (?, ?, ?, ?, ?)"
 
     with closing(sqlite3.connect("cfpbcomplaints.db")) as conn:
         with closing(conn.cursor()) as cursor:
-            cursor.executescript(create_script)
             cursor.executemany(insert_cmd, parsed)
             conn.commit()
 
 
-def build_flow():
-    with Flow("ETL json flow") as f:
+schedule = IntervalSchedule(interval=datetime.timedelta(minutes=1))
+
+
+def build_flow(schedule):
+    with Flow("ETL json flow", schedule) as f:
+        db_table = create_table()
         raw = get_complaint_data()
         parsed = parse_complaint_data(raw)
-        store_complaints(parsed)
+        populated_table = store_complaints(parsed)
+        populated_table.set_upstream(db_table)
 
     return f
 
 
-flow = build_flow()
+flow = build_flow(schedule)
 
 flow.run()
