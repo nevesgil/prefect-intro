@@ -8,6 +8,7 @@ import datetime
 from prefect import task, Flow
 from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.schedules import IntervalSchedule
+from prefect.engine import signals
 
 
 # state handlers
@@ -19,7 +20,8 @@ def alert_failed(obj, old_state, new_state):
 ## setup
 create_table = SQLiteScript(
     db="cfpbcomplaints.db",
-    script="CREATE TABLE IF NOT EXISTS complaint (timestamp TEXT, state TEXT, product TEXT, company TEXT, complaint_what_happened TEXT)",
+    script="CREATE TABLE IF NOT EXISTS complaint \
+    (timestamp TEXT, state TEXT, product TEXT, company TEXT, complaint_what_happened TEXT)",
 )
 
 
@@ -38,7 +40,7 @@ def get_complaint_data():
 ## transform
 @task(state_handlers=[alert_failed])
 def parse_complaint_data(raw):
-    raise Exception
+    raise signals.SUCCESS
     complaints = []
     Complaint = namedtuple(
         "Complaint",
@@ -70,6 +72,7 @@ def store_complaints(parsed):
 
 
 schedule = IntervalSchedule(interval=datetime.timedelta(seconds=10))
+
 
 def build_flow(schedule):
     with Flow("ETL json flow", schedule, state_handlers=[alert_failed]) as f:
