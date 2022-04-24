@@ -4,10 +4,13 @@ from collections import namedtuple
 from contextlib import closing
 import sqlite3
 import datetime
+import prefect
 
 from prefect import task, Flow
 from prefect.tasks.database.sqlite import SQLiteScript
 from prefect.schedules import IntervalSchedule
+from prefect.engine import signals
+from prefect.engine.results import LocalResult
 
 
 # state handlers
@@ -19,26 +22,31 @@ def alert_failed(obj, old_state, new_state):
 ## setup
 create_table = SQLiteScript(
     db="cfpbcomplaints.db",
-    script="CREATE TABLE IF NOT EXISTS complaint (timestamp TEXT, state TEXT, product TEXT, company TEXT, complaint_what_happened TEXT)",
+    script="CREATE TABLE IF NOT EXISTS complaint \
+    (timestamp TEXT, state TEXT, product TEXT, company TEXT, complaint_what_happened TEXT)",
 )
 
 
 ## extract
-@task(cache_for=datetime.timedelta(days=1), state_handlers=[alert_failed])
+@task(
+    cache_for=datetime.timedelta(seconds=1),
+    state_handlers=[alert_failed],
+    result=LocalResult(dir="./test_results"),
+)
 def get_complaint_data():
     r = requests.get(
         "https://www.consumerfinance.gov/data-research/consumer-complaints/search/api/v1/",
         params={"size": 10},
     )
     response_json = json.loads(r.text)
-    print("First time. Not cached.")
+    logger = prefect.context.get("logger")
+    logger.info("Requested this time.")
     return response_json["hits"]["hits"]
 
 
 ## transform
 @task(state_handlers=[alert_failed])
 def parse_complaint_data(raw):
-    raise Exception
     complaints = []
     Complaint = namedtuple(
         "Complaint",
@@ -69,19 +77,14 @@ def store_complaints(parsed):
             conn.commit()
 
 
-schedule = IntervalSchedule(interval=datetime.timedelta(seconds=10))
-
-def build_flow(schedule):
-    with Flow("ETL json flow", schedule, state_handlers=[alert_failed]) as f:
-        db_table = create_table()
-        raw = get_complaint_data()
-        parsed = parse_complaint_data(raw)
-        populated_table = store_complaints(parsed)
-        populated_table.set_upstream(db_table)
-
-    return f
+schedule = IntervalSchedule(interval=datetime.timedelta(minutes=1))
 
 
-flow = build_flow(schedule)
+with Flow("ETL json flow", schedule, state_handlers=[alert_failed]) as flow:
+    db_table = create_table()
+    raw = get_complaint_data()
+    parsed = parse_complaint_data(raw)
+    populated_table = store_complaints(parsed)
+    populated_table.set_upstream(db_table)
 
-flow.run()
+flow.register(project_name="demo_tutorial")
