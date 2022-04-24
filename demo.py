@@ -74,8 +74,6 @@ def store_complaints(parsed):
             cursor.executemany(insert_cmd, parsed)
             conn.commit()
 
-    # raise signals.SUCCESS
-
 
 schedule = IntervalSchedule(interval=datetime.timedelta(seconds=10))
 
